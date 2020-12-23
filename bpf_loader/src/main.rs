@@ -39,7 +39,7 @@ async fn main() -> Result<(), io::Error> {
                 let event = unsafe { &*(event.as_ptr() as *const MapData<RequestInfo>) };
                 let info = &event.data();
                 let ip = IpAddr::from(info.saddr.to_ne_bytes());
-                println!("{} - {}", ip, event.payload().len());
+                println!("{} - {}", ip, info.len;
             }
         }
     });

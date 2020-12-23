@@ -3,11 +3,13 @@
 
 use redbpf_probes::xdp::prelude::*;
 use bpf_probe::probe_network::RequestInfo;
+use redbpf_probes::maps::PerfMap as Map;
+
 
 program!(0xFFFFFFFE, "GPL");
 
 #[map("requests")]
-static mut requests: PerfMap<RequestInfo> = PerfMap::with_max_entries(1024);
+static mut requests: Map<RequestInfo> = Map::with_max_entries(1024);
 
 #[xdp("probe_network")]
 pub fn probe(ctx: XdpContext) -> XdpResult {
@@ -20,14 +22,14 @@ pub fn probe(ctx: XdpContext) -> XdpResult {
         saddr: ip.saddr,
         daddr: ip.daddr,
         sport: transport.source(),
-        dport: transport.dest()
+        dport: transport.dest(),
+        len: data.len()
     };
 
-    let aab = MapData::with_payload(info, data.offset() as u32, data.len() as u32);
     unsafe {
         requests.insert(
-            &ctx,
-            &aab,
+            ctx.inner(),
+            &info,
         )
     };
 
