@@ -32,7 +32,7 @@ async fn main() -> Result<(), io::Error> {
         let _ret = match program {
             XDP(prog) => {
                 println!("Attaching to {:?} interface: {:?}", &name, &interface);
-                prog.attach_xdp(&interface, Flags::default()) // attach the program to the Kernel space
+                prog.attach_xdp(&interface, Flags::SkbMode) // attach the program to the Kernel space
             }
             _ => Ok(()),
         };
