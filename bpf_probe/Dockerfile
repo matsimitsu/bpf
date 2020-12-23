@@ -2,9 +2,7 @@ FROM ubuntu:20.04
 
 # deps
 ENV DEBIAN_FRONTEND='noninteractive'
-RUN apt-get update && apt install -y \
-    # common
-    git wget gcc kmod libsodium-dev make zlib1g-dev \
+RUN apt-get update && apt install -y git wget gcc kmod libsodium-dev make zlib1g-dev \
     # llvm
     lsb-release software-properties-common \
     # kernel

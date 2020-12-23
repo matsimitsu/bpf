@@ -6,11 +6,11 @@ use bpf_probe::probe_network::RequestInfo;
 
 program!(0xFFFFFFFE, "GPL");
 
-#[map(link_section = "requests")]
+#[map("requests")]
 static mut requests: PerfMap<RequestInfo> = PerfMap::with_max_entries(1024);
 
-#[xdp("monitor")]
-pub fn probe_network(ctx: XdpContext) -> XdpResult {
+#[xdp("probe_network")]
+pub fn probe(ctx: XdpContext) -> XdpResult {
     let (ip, transport, data) = match (ctx.ip(), ctx.transport(), ctx.data()) {
         (Ok(ip), Ok(t), Ok(data)) => (unsafe { *ip }, t, data),
         _ => return Ok(XdpAction::Pass),
