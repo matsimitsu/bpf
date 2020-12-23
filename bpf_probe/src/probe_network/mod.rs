@@ -5,5 +5,5 @@ pub struct RequestInfo {
     pub daddr: u32,
     pub sport: u16,
     pub dport: u16,
-    pub len: usize
+    pub len: u32
 }

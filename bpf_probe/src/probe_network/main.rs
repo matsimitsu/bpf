@@ -23,7 +23,7 @@ pub fn probe(ctx: XdpContext) -> XdpResult {
         daddr: ip.daddr,
         sport: transport.source(),
         dport: transport.dest(),
-        len: data.len()
+        len: data.len() as u32
     };
 
     unsafe {
