@@ -11,11 +11,8 @@ static mut ip_map: HashMap<u32, IpData> = HashMap::with_max_entries(10240);
 
 #[xdp("probe_network")]
 pub fn probe(ctx: XdpContext) -> XdpResult {
-    let (ip, data) = match (ctx.ip(), ctx.data()) {
-        (Ok(ip), Ok(data)) => (unsafe { *ip }, data),
-        _ => return Ok(XdpAction::Pass),
-    };
-
+    let ip = unsafe { *ctx.ip()? };
+    let data = ctx.data()?;
 
     let ip_agg = IpData {
         count: 0u32,
