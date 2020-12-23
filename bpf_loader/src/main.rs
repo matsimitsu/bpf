@@ -1,13 +1,18 @@
-use bpf_probe::probe_network::RequestInfo;
+use bpf_probe::probe_network::IpData;
 use futures::stream::StreamExt;
 use redbpf::load::Loader;
-use redbpf::xdp::{Flags, MapData};
+use redbpf::HashMap;
+use redbpf::xdp::Flags;
 use std::env;
 use std::io;
 use std::net::IpAddr;
 use std::path::Path;
 use tokio;
 use tokio::signal;
+use tokio::time::sleep;
+use std::time::Duration;
+
+
 use redbpf::Program::XDP;
 
 #[tokio::main]
@@ -34,14 +39,14 @@ async fn main() -> Result<(), io::Error> {
     }
 
     tokio::spawn(async move {
-        while let Some((_, events)) = loader.events.next().await {
-            for event in events {
-                let event = unsafe { &*(event.as_ptr() as *const MapData<RequestInfo>) };
-                let info = &event.data();
-                let ip = IpAddr::from(info.saddr.to_ne_bytes());
-                println!("{} - {}", ip, info.len);
-            }
-        }
+        let ips = HashMap::<u32, IpData>::new(loader.map("ip_map").unwrap()).unwrap();
+        loop {
+            sleep(Duration::from_millis(60000)).await;
+            for (key,value) in ips.iter() {
+                println!("{} - {:?}", key, value);
+                ips.delete(key)
+            };
+        };
     });
 
     signal::ctrl_c().await

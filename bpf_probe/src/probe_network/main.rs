@@ -2,35 +2,37 @@
 #![no_main]
 
 use redbpf_probes::xdp::prelude::*;
-use bpf_probe::probe_network::RequestInfo;
-use redbpf_probes::maps::PerfMap as Map;
-
+use bpf_probe::probe_network::IpData;
 
 program!(0xFFFFFFFE, "GPL");
 
-#[map("requests")]
-static mut requests: Map<RequestInfo> = Map::with_max_entries(1024);
+#[map("ip_map")]
+static mut ip_map: HashMap<u32, IpData> = HashMap::with_max_entries(10240);
 
 #[xdp("probe_network")]
 pub fn probe(ctx: XdpContext) -> XdpResult {
-    let (ip, transport, data) = match (ctx.ip(), ctx.transport(), ctx.data()) {
-        (Ok(ip), Ok(t), Ok(data)) => (unsafe { *ip }, t, data),
+    let (ip, data) = match (ctx.ip(), ctx.data()) {
+        (Ok(ip), Ok(data)) => (unsafe { *ip }, data),
         _ => return Ok(XdpAction::Pass),
     };
 
-    let info = RequestInfo {
-        saddr: ip.saddr,
-        daddr: ip.daddr,
-        sport: transport.source(),
-        dport: transport.dest(),
-        len: data.len() as u32
+
+    let ip_agg = IpData {
+        count: 0u32,
+        usage: 0u32,
     };
 
     unsafe {
-        requests.insert(
-            ctx.inner(),
-            &info,
-        )
+        let mut ip_sender = match ip_map.get_mut(&ip.saddr) {
+            Some(c) => c,
+            None => {
+                ip_map.set(&ip.saddr, &ip_agg);
+                ip_map.get_mut(&ip.saddr).unwrap()
+            }
+        };
+
+        ip_sender.count += 1;
+        ip_sender.usage += (data.len() + data.offset()) as u32;
     };
 
     Ok(XdpAction::Pass)

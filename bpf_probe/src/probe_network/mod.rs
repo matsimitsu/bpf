@@ -1,9 +1,6 @@
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct RequestInfo {
-    pub saddr: u32,
-    pub daddr: u32,
-    pub sport: u16,
-    pub dport: u16,
-    pub len: u32
+pub struct IpData {
+    pub count: u32,
+    pub usage: u32
 }
