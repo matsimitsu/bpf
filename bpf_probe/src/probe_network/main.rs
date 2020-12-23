@@ -7,7 +7,7 @@ use bpf_probe::probe_network::IpData;
 program!(0xFFFFFFFE, "GPL");
 
 #[map("ip_map")]
-static mut ip_map: HashMap<(u32, u32) IpData> = HashMap::with_max_entries(10240);
+static mut ip_map: HashMap<(u32, u32), IpData> = HashMap::with_max_entries(10240);
 
 #[xdp("probe_network")]
 pub fn probe(ctx: XdpContext) -> XdpResult {
