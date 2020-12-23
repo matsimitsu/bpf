@@ -1,0 +1,22 @@
+[package]
+name = "bpf_probe"
+version = "0.1.0"
+authors = ["Robert Beekman <robertbeekman@matsimitsu.nl>"]
+edition = "2018"
+
+[dependencies]
+cty = "0.2"
+redbpf-probes = "1.3.0"
+redbpf-macros = "1.3.0"
+
+[features]
+default = []
+probes = []
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "probe_network"
+path = "src/probe_network/main.rs"
+required-features = ["probes"]
