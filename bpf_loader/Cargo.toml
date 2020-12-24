@@ -9,5 +9,11 @@ edition = "2018"
 [dependencies]
 redbpf = { version = "1.3.0", features = ["load"] }
 bpf_probe = { path = "../bpf_probe" }
-futures = "0.3"
-tokio = { version = "0.3.6", features = ["time", "rt-multi-thread", "macros", "signal"] }
+lazy_static = "*"
+time = "*"
+ureq = { version = "*", features = ["json"] }
+serde = {version = "*", features = ["derive"]}
+serde_json = "*"
+nix = "*"
+lru-cache = "*"
+dns-lookup = "*"
