@@ -7,7 +7,7 @@ use redbpf::Program::XDP;
 use std::env;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::thread;
 use std::sync::mpsc::channel;
 use std::thread::sleep;
@@ -19,6 +19,7 @@ use lru_cache::LruCache;
 use dns_lookup::lookup_addr;
 use serde_json::json;
 use serde::Serialize;
+use time::OffsetDateTime;
 
 #[derive(Debug,Clone,Serialize)]
 pub struct Link {
@@ -65,6 +66,7 @@ fn main() -> Result<(), io::Error> {
 
     thread::spawn(move|| {
         let ips = HashMap::<(u32, u32), IpData>::new(loader.map("ip_map").unwrap()).unwrap();
+        let mut start = Instant::now();
         loop {
             sleep(Duration::from_millis(10000));
             let mut cache: Vec<(u32, u32, u32, u32)> = Vec::new();
@@ -72,11 +74,13 @@ fn main() -> Result<(), io::Error> {
                 cache.push((key.0, key.1, value.count, value.usage));
                 ips.delete(key)
             };
-            sender.send(cache).unwrap();
+            let duration = start.elapsed().as_millis();
+            start = Instant::now();
+            sender.send((duration, cache)).unwrap();
         };
     });
 
-    for data in receiver.iter() {
+    for (duration, data) in receiver.iter() {
         let mut links: Vec<Link> = Vec::new();
 
         for (source_u32, dest_u32, count, usage) in data.into_iter() {
@@ -113,20 +117,21 @@ fn main() -> Result<(), io::Error> {
 
         }
 
-        transmit(&agent, &endpoint, &links);
+        transmit(&agent, &endpoint, &links, &duration);
     };
 
     Ok(())
 }
 
-pub fn transmit(agent: &Agent, endpoint: &str, links: &Vec<Link>) -> bool {
+pub fn transmit(agent: &Agent, endpoint: &str, links: &Vec<Link>, duration: &u128) -> bool {
     let json = json!({
       "hostname": HOSTNAME.to_string(),
+      "timestamp": OffsetDateTime::now_utc().unix_timestamp(),
+      "duration": duration,
       "links": links,
     });
-    println!("{:?}", json);
-    let resp = agent.post(endpoint)
-      .send_json(json);
+    let resp = agent.post(endpoint).send_json(json.to_owned());
+    println!("[{}] {}", resp.status_line(), json);
     resp.ok()
 }
 
