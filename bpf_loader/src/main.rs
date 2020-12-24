@@ -20,6 +20,7 @@ use dns_lookup::lookup_addr;
 use serde_json::json;
 use serde::Serialize;
 use time::OffsetDateTime;
+use pnet::datalink::{self, NetworkInterface};
 
 #[derive(Debug,Clone,Serialize)]
 pub struct Link {
@@ -33,6 +34,7 @@ pub struct Link {
 
 lazy_static! {
     pub static ref HOSTNAME: String = hostname().expect("Could not get hostname");
+    pub static ref IPS: Vec<String> = ips();
 }
 
 fn main() -> Result<(), io::Error> {
@@ -126,6 +128,7 @@ fn main() -> Result<(), io::Error> {
 pub fn transmit(agent: &Agent, endpoint: &str, links: &Vec<Link>, duration: &u64) -> bool {
     let json = json!({
       "hostname": HOSTNAME.to_string(),
+      "ips": IPS.to_vec(),
       "timestamp": OffsetDateTime::now_utc().unix_timestamp(),
       "duration": duration,
       "links": links,
@@ -148,4 +151,18 @@ fn hostname() -> Option<String> {
     };
 
     Some(hostname_str.to_string())
+}
+
+fn ips() -> Vec<String> {
+    let interface_name = env::args().nth(1).unwrap();
+    let interface_names_match =
+        |iface: &NetworkInterface| iface.name == interface_name;
+
+    // Find the network interface with the provided name
+    let interfaces = datalink::interfaces();
+    let interface = interfaces.into_iter()
+                                .filter(interface_names_match)
+                                .next()
+                                .unwrap();
+    interface.ips.iter().map ( |ip| ip.ip().to_string()).collect()
 }
