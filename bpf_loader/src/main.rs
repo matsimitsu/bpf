@@ -83,8 +83,8 @@ fn main() -> Result<(), io::Error> {
         let mut links: Vec<Link> = Vec::new();
 
         for (source_u32, dest_u32, count, usage) in data.into_iter() {
-            let source_ip: IpAddr = IpAddr::V4(Ipv4Addr::from(source_u32));
-            let dest_ip: IpAddr = IpAddr::V4(Ipv4Addr::from(dest_u32));
+            let source_ip: IpAddr = IpAddr::V4(Ipv4Addr::from(source_u32.to_be()));
+            let dest_ip: IpAddr = IpAddr::V4(Ipv4Addr::from(dest_u32.to_be()));
 
             let source_hostname = match hostname_cache.get_mut(&source_ip) {
                 Some(hostname) => hostname.to_string(),
@@ -160,5 +160,5 @@ fn ips() -> Vec<String> {
                               .filter(interface_names_match)
                               .next()
                               .unwrap();
-    interface.ips.iter().map ( |ip| ip.to_string()).collect()
+    interface.ips.iter().map ( |ip| ip.ip().to_string()).collect()
 }
