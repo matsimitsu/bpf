@@ -7,7 +7,6 @@ use redbpf::Program::XDP;
 use std::env;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr};
-use std::path::Path;
 use std::time::Duration;
 use std::thread;
 use std::sync::mpsc::channel;
@@ -20,6 +19,7 @@ use lru_cache::LruCache;
 use dns_lookup::lookup_addr;
 use serde_json::json;
 use serde::Serialize;
+use pnet::datalink::{self, NetworkInterface};
 
 
 #[derive(Debug,Clone,Serialize)]
@@ -34,9 +34,11 @@ pub struct Link {
 
 lazy_static! {
     pub static ref HOSTNAME: String = hostname().expect("Could not get hostname");
+    pub static ref IPS: Vec<String> = ips();
 }
 
 fn main() -> Result<(), io::Error> {
+    let elf_bytes = include_bytes!("../../bpf_probe/target/bpf/programs/probe_network/probe_network.elf");
     let mut hostname_cache: LruCache<IpAddr, String> = LruCache::new(1000);
     let agent = Agent::new()
         .set("Content-type", "application/json")
@@ -44,14 +46,13 @@ fn main() -> Result<(), io::Error> {
     let (sender, receiver) = channel();
 
     let args: Vec<String> = env::args().collect();
-    if args.len() != 4 {
-        eprintln!("usage: bpf_example_program [NETWORK_INTERFACE] [FILENAME] [ENDPOINT");
+    if args.len() != 3 {
+        eprintln!("usage: bpf_example_program [NETWORK_INTERFACE] [ENDPOINT");
         return Err(io::Error::new(io::ErrorKind::Other, "invalid arguments"));
     }
     let interface = args[1].clone();
-    let file = args[2].clone();
-    let endpoint = args[3].clone();
-    let mut loader = Loader::load_file(&Path::new(&file)).expect("error loading file");
+    let endpoint = args[2].clone();
+    let mut loader = Loader::load(elf_bytes).expect("error loading file");
 
     // Load all of the XDP programs from the binary
     for program in loader.module.programs.iter_mut() {
@@ -124,6 +125,7 @@ fn main() -> Result<(), io::Error> {
 pub fn transmit(agent: &Agent, endpoint: &str, links: &Vec<Link>) -> bool {
     let json = json!({
       "hostname": HOSTNAME.to_string(),
+      "ips": IPS.to_vec(),
       "links": links,
     });
     println!("{:?}", json);
@@ -146,3 +148,17 @@ fn hostname() -> Option<String> {
 
       Some(hostname_str.to_string())
   }
+
+fn ips() -> Vec<String> {
+    let interface_name = env::args().nth(1).unwrap();
+    let interface_names_match =
+        |iface: &NetworkInterface| iface.name == interface_name;
+
+    // Find the network interface with the provided name
+    let interfaces = datalink::interfaces();
+    let interface = interfaces.into_iter()
+                              .filter(interface_names_match)
+                              .next()
+                              .unwrap();
+    interface.ips.iter().map ( |ip| ip.to_string()).collect()
+}
