@@ -126,7 +126,7 @@ fn main() -> Result<(), io::Error> {
 pub fn transmit(agent: &Agent, endpoint: &str, links: &Vec<Link>, duration: &u128) -> bool {
     let json = json!({
       "hostname": HOSTNAME.to_string(),
-      "timestamp": OffsetDateTime::now_utc().unix_timestamp(),
+      "timestamp": OffsetDateTime::now_utc().unix_timestamp() as u64,
       "duration": duration,
       "links": links,
     });
