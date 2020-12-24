@@ -76,7 +76,7 @@ fn main() -> Result<(), io::Error> {
             };
             let duration = start.elapsed().as_millis();
             start = Instant::now();
-            sender.send((duration, cache)).unwrap();
+            sender.send((duration as u64, cache)).unwrap();
         };
     });
 
@@ -123,10 +123,10 @@ fn main() -> Result<(), io::Error> {
     Ok(())
 }
 
-pub fn transmit(agent: &Agent, endpoint: &str, links: &Vec<Link>, duration: &u128) -> bool {
+pub fn transmit(agent: &Agent, endpoint: &str, links: &Vec<Link>, duration: &u64) -> bool {
     let json = json!({
       "hostname": HOSTNAME.to_string(),
-      "timestamp": OffsetDateTime::now_utc().unix_timestamp() as u64,
+      "timestamp": OffsetDateTime::now_utc().unix_timestamp(),
       "duration": duration,
       "links": links,
     });
