@@ -1,8 +1,6 @@
-use bpf_probe::probe_network::IpData;
+use bpf_probe::probe_network::Message;
 use redbpf::load::Loader;
-use redbpf::HashMap;
-use redbpf::xdp::Flags;
-use redbpf::Program::XDP;
+use redbpf::{cpus,PerfMap,Event};
 
 use std::env;
 use std::io;
@@ -11,6 +9,9 @@ use std::time::{Duration, Instant};
 use std::thread;
 use std::sync::mpsc::channel;
 use std::thread::sleep;
+use std::mem;
+use std::ptr;
+
 
 use ureq::Agent;
 use lazy_static::lazy_static;
@@ -46,80 +47,63 @@ fn main() -> Result<(), io::Error> {
     let (sender, receiver) = channel();
 
     let args: Vec<String> = env::args().collect();
-    if args.len() != 3 {
+    if args.len() != 2 {
         eprintln!("usage: bpf_example_program [NETWORK_INTERFACE] [ENDPOINT");
         return Err(io::Error::new(io::ErrorKind::Other, "invalid arguments"));
     }
-    let interface = args[1].clone();
-    let endpoint = args[2].clone();
+    let endpoint = args[1].clone();
     let mut loader = Loader::load(elf_bytes).expect("error loading file");
 
-    // Load all of the XDP programs from the binary
-    for program in loader.module.programs.iter_mut() {
+    // Load all of the kprobes programs from the binary
+    for program in loader.module.kprobes_mut() {
         let name = program.name().to_string();
-        let _ret = match program {
-            XDP(prog) => {
-                println!("Attaching to {:?} interface: {:?}", &name, &interface);
-                prog.attach_xdp(&interface, Flags::SkbMode) // attach the program to the Kernel space
-            }
-            _ => Ok(()),
-        };
+        program.attach_kprobe(&program.name(), 0).unwrap()
+    }
+
+    let online_cpus = cpus::get_online().unwrap();
+    let mut maps: Vec<PerfMap> = vec![];
+    for m in loader.module.maps.iter_mut().filter(|m| m.kind == 4) {
+        for cpuid in online_cpus.iter() {
+            let map = PerfMap::bind(m, -1, *cpuid, 16, -1, 0).unwrap();
+            maps.push(map)
+        }
     }
 
     thread::spawn(move|| {
-        let ips = HashMap::<(u32, u32), IpData>::new(loader.map("ip_map").unwrap()).unwrap();
         let mut start = Instant::now();
+        let mut cache: Vec<Message> = Vec::new();
+
         loop {
-            sleep(Duration::from_millis(10000));
-            let mut cache: Vec<(u32, u32, u32, u32)> = Vec::new();
-            for (key,value) in ips.iter() {
-                cache.push((key.0, key.1, value.count, value.usage));
-                ips.delete(key)
-            };
+            for map in maps.iter() {
+                if let Some(ev) = map.read() {
+                    match ev {
+                        Event::Lost(lost) => {
+                            eprintln!("Possibly lost {} samples", lost.count);
+                        }
+                        Event::Sample(sample) => {
+                            let msg = unsafe { std::ptr::read(sample.data.as_ptr() as *const Message) };
+                            cache.push(msg);
+                        }
+                    };
+                }
+            }
             let duration = start.elapsed().as_millis();
-            start = Instant::now();
-            sender.send((duration as u64, cache)).unwrap();
+            if duration > 10000 {
+                let new_cache = mem::replace(&mut cache, Vec::new());
+                start = Instant::now();
+                sender.send((duration as u64, new_cache)).unwrap();
+
+            }
         };
     });
 
     for (duration, data) in receiver.iter() {
         let mut links: Vec<Link> = Vec::new();
 
-        for (source_u32, dest_u32, count, usage) in data.into_iter() {
-            let source_ip: IpAddr = IpAddr::V4(Ipv4Addr::from(source_u32.to_be()));
-            let dest_ip: IpAddr = IpAddr::V4(Ipv4Addr::from(dest_u32.to_be()));
-
-            let source_hostname = match hostname_cache.get_mut(&source_ip) {
-                Some(hostname) => hostname.to_string(),
-                None => {
-                    let hostname = lookup_addr(&source_ip).unwrap_or(source_ip.to_string());
-                    hostname_cache.insert(source_ip, hostname.to_string());
-                  hostname
-                }
-            };
-
-            let dest_hostname = match hostname_cache.get_mut(&dest_ip) {
-                Some(hostname) => hostname.to_string(),
-                None => {
-                    let hostname = lookup_addr(&dest_ip).unwrap_or(dest_ip.to_string());
-                    hostname_cache.insert(dest_ip, hostname.to_string());
-                    hostname
-                }
-            };
-
-            let link = Link {
-                source_ip: source_ip.to_string(),
-                dest_ip: dest_ip.to_string(),
-                source_hostname,
-                dest_hostname,
-                count,
-                usage
-            };
-            links.push(link);
-
+        for message in data.iter() {
+            println!("Message: {:?}", message);
         }
 
-        transmit(&agent, &endpoint, &links, &duration);
     };
 
     Ok(())
