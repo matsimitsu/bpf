@@ -38,7 +38,8 @@ lazy_static! {
     pub static ref IPS: Vec<String> = ips();
 }
 
-fn main() -> Result<(), io::Error> {
+#[tokio::main]
+async fn main() -> Result<(), io::Error> {
     let elf_bytes = include_bytes!("../../bpf_probe/target/bpf/programs/probe_network/probe_network.elf");
     let mut hostname_cache: LruCache<IpAddr, String> = LruCache::new(1000);
     let agent = Agent::new()

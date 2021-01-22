@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 use redbpf_probes::kprobe::prelude::*;
-use probe_network::{Connection, Message};
+use bpf_probe::probe_network::{Connection, Message};
 use cty::*;
 
 program!(0xFFFFFFFE, "GPL");

@@ -18,3 +18,4 @@ nix = "*"
 lru-cache = "*"
 dns-lookup = "*"
 pnet = "*"
+tokio = { version = "^0.2.4", features = ["signal", "time"] }
