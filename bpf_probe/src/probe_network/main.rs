@@ -55,7 +55,7 @@ fn store_socket(regs: Registers) {
 #[inline(always)]
 fn trace_message(regs: Registers, direction: fn(Connection, u16) -> Message) {
     if let Some(c) = conn_details(regs) {
-        let len = regs.parm3() as u16;
+        let len = unsafe { (*regs.ctx).ax as u16 };
         unsafe {
             ip_volumes.insert(regs.ctx, &direction(c, len));
         }
