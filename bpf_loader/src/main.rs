@@ -105,7 +105,8 @@ async fn main() -> Result<(), io::Error> {
 
         for message in data.iter() {
             println!("Message: {:?}", message);
-            let comm = unsafe { CStr::from_ptr(message.comm.as_ptr() as *const c_char) }
+            let (connection, size) = message;
+            let comm = unsafe { CStr::from_ptr(connection.comm.as_ptr() as *const c_char) }
             .to_string_lossy()
             .into_owned();
 
