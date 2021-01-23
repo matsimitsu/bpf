@@ -11,6 +11,8 @@ use std::sync::mpsc::channel;
 use std::thread::sleep;
 use std::mem;
 use std::ptr;
+use std::os::raw::c_char;
+use std::ffi::CStr;
 
 
 use ureq::Agent;
@@ -107,7 +109,7 @@ async fn main() -> Result<(), io::Error> {
             .to_string_lossy()
             .into_owned();
 
-            println!("comm: {}", comm;)
+            println!("comm: {}", comm)
         }
 
     };
