@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
-use redbpf_probes::kprobe::prelude::*;
-use bpf_probe::probe_network::{Connection, Message};
+use bpf_probe::probe_network::{Connection, Direction, Message};
 use cty::*;
+use redbpf_probes::kprobe::prelude::*;
 
 program!(0xFFFFFFFE, "GPL");
 
@@ -24,7 +24,7 @@ pub fn send_enter(regs: Registers) {
 
 #[kretprobe("tcp_sendmsg")]
 pub fn send_exit(regs: Registers) {
-    trace_message(regs, Message::Send)
+    trace_message(regs, Direction::Send)
 }
 
 #[kprobe("tcp_recvmsg")]
@@ -34,17 +34,17 @@ pub fn recv_enter(regs: Registers) {
 
 #[kretprobe("tcp_recvmsg")]
 pub fn recv_exit(regs: Registers) {
-    trace_message(regs, Message::Receive)
+    trace_message(regs, Direction::Receive)
 }
 
 #[kprobe("udp_sendmsg")]
 pub fn udp_send_enter(regs: Registers) {
-    trace_message(regs, Message::Send)
+    trace_message(regs, Direction::Send)
 }
 
 #[kprobe("udp_rcv")]
 pub fn udp_rcv_enter(regs: Registers) {
-    trace_message(regs, Message::Receive)
+    trace_message(regs, Direction::Receive)
 }
 
 #[inline(always)]
@@ -53,17 +53,18 @@ fn store_socket(regs: Registers) {
 }
 
 #[inline(always)]
-fn trace_message(regs: Registers, direction: fn(Connection, u16) -> Message) {
-    if let Some(c) = conn_details(regs) {
+fn trace_message(regs: Registers, direction: Direction) {
+    if let Some(c) = conn_details(regs, direction) {
         let len = unsafe { (*regs.ctx).ax as u16 };
+        let message: Message = (c, len);
         unsafe {
-            ip_volumes.insert(regs.ctx, &direction(c, len));
+            ip_volumes.insert(regs.ctx, &message);
         }
     }
 }
 
 #[inline(always)]
-pub fn conn_details(_regs: Registers) -> Option<Connection> {
+pub fn conn_details(_regs: Registers, direction: Direction) -> Option<Connection> {
     let pid_tgid = bpf_get_current_pid_tgid();
     let socket = unsafe {
         match task_to_socket.get(&pid_tgid) {
@@ -114,10 +115,9 @@ pub fn conn_details(_regs: Registers) -> Option<Connection> {
 
     #[cfg(not(any(kernel_version = "5.7", kernel_version = "5.6")))]
     let typ: u32 = {
-       let typ = unsafe { bpf_probe_read(&socket._bitfield_1 as *const _ as *const u32) }.ok()?;
-       (typ & SK_FL_PROTO_MASK) >> SK_FL_PROTO_SHIFT
+        let typ = unsafe { bpf_probe_read(&socket._bitfield_1 as *const _ as *const u32) }.ok()?;
+        (typ & SK_FL_PROTO_MASK) >> SK_FL_PROTO_SHIFT
     };
-
 
     unsafe {
         task_to_socket.delete(&pid_tgid);
@@ -132,5 +132,6 @@ pub fn conn_details(_regs: Registers) -> Option<Connection> {
         sport,
         dport,
         typ,
+        direction,
     })
 }

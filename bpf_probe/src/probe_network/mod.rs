@@ -1,6 +1,7 @@
+use core::fmt::Debug;
 use cty::c_char;
 use redbpf_probes::bindings::*;
-use core::fmt::Debug;
+
 #[repr(C)]
 pub struct Ipv6Addr(in6_addr);
 
@@ -30,7 +31,6 @@ impl Debug for Ipv6Addr {
     }
 }
 
-#[derive(Debug)]
 pub struct Connection {
     pub ts: u64,
     pub pid: u32,
@@ -40,10 +40,13 @@ pub struct Connection {
     pub comm: [c_char; 16],
     pub saddr: Ipv6Addr,
     pub daddr: Ipv6Addr,
+    pub direction: Direction,
 }
 
-#[derive(Debug)]
-pub enum Message {
-    Send(Connection, u16),
-    Receive(Connection, u16),
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum Direction {
+    Send,
+    Receive,
 }
+
+pub type Message = (Connection, u16);
