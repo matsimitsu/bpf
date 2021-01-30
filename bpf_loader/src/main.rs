@@ -107,7 +107,6 @@ async fn main() -> Result<(), io::Error> {
                 *state.entry(key).or_insert(0) += size as u32;
             }
         }
-        future::pending::<()>().await;
     });
 
     loop {
