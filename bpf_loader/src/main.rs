@@ -1,5 +1,5 @@
-use bpf_probe::probe_network::{Ipv6Addr, Message, Connection};
-use redbpf::load::Loader;
+use bpf_probe::probe_network::{Connection, Ipv6Addr, Message};
+use redbpf::load::{Loader,Loaded};
 
 use std::collections::HashMap;
 use std::env;
@@ -81,41 +81,53 @@ async fn main() -> Result<(), io::Error> {
         program.attach_kprobe(&program.name(), 0).unwrap()
     }
     let cache: Cache = Arc::new(Mutex::new(HashMap::new()));
+    work(loader, cache.clone());
 
-    {
-        let cache = cache.clone();
-        tokio::spawn(async move {
-            println!("starting");
-            while let Some((name, events)) = loader.events.next().await {
-                println!("({},{})", name, events.len());
-                for event in events {
-                    println!("event");
-                    let message = unsafe { ptr::read(event.as_ptr() as *const Message) };
-                    let (connection, size, direction) = match message {
-                        Message::Send(c, s) => (c, s, Direction::Send),
-                        Message::Receive(c, s) => (c, s, Direction::Receive),
-                    };
-                    let comm = unsafe { CStr::from_ptr(connection.comm.as_ptr() as *const c_char) };
-                    println!("comm");
-
-                    let key: CacheKey = (
-                        ip_to_string(&connection.saddr),
-                        ip_to_string(&connection.saddr),
-                        connection.sport,
-                        connection.dport,
-                        comm.to_string_lossy().into_owned(),
-                        direction,
-                    );
-
-                    println!("{:?}", &key);
-                    let mut state = cache.lock().expect("Could not lock mutex");
-                    *state.entry(key).or_insert(0) += size as u32;
-                }
-            }
-        });
+    loop {
+        sleep(Duration::from_millis(1000));
+        {
+            let mut state = cache.lock().expect("Could not lock mutex");
+            println!("{:?}", state);
+            let transfer_cache = mem::replace(&mut *state, HashMap::new());
+            println!("{:?}", transfer_cache);
+        }
+        // convert cache to link, enriching the data
+        // transmit link
     }
-
     Ok(())
+}
+
+async fn work(mut loader: Loaded, cache: Cache) {
+    let cache = cache.clone();
+    tokio::spawn(async move {
+        println!("starting");
+        while let Some((name, events)) = loader.events.next().await {
+            println!("({},{})", name, events.len());
+            for event in events {
+                println!("event");
+                let message = unsafe { ptr::read(event.as_ptr() as *const Message) };
+                let (connection, size, direction) = match message {
+                    Message::Send(c, s) => (c, s, Direction::Send),
+                    Message::Receive(c, s) => (c, s, Direction::Receive),
+                };
+                let comm = unsafe { CStr::from_ptr(connection.comm.as_ptr() as *const c_char) };
+                println!("comm");
+
+                let key: CacheKey = (
+                    ip_to_string(&connection.saddr),
+                    ip_to_string(&connection.saddr),
+                    connection.sport,
+                    connection.dport,
+                    comm.to_string_lossy().into_owned(),
+                    direction,
+                );
+
+                println!("{:?}", &key);
+                let mut state = cache.lock().expect("Could not lock mutex");
+                *state.entry(key).or_insert(0) += size as u32;
+            }
+        }
+    });
 }
 
 pub fn transmit(agent: &Agent, endpoint: &str, links: &Vec<Link>, duration: &u64) -> bool {
