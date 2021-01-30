@@ -90,7 +90,6 @@ async fn main() -> Result<(), io::Error> {
             sleep(Duration::from_millis(1000));
             {
                 let mut state = clone.lock().expect("Could not lock mutex");
-                println!("STATE!! {:?}", state);
                 let transfer_cache = mem::replace(&mut *state, HashMap::new());
                 println!("{:?}", transfer_cache);
             }
@@ -110,15 +109,16 @@ async fn main() -> Result<(), io::Error> {
 
             let key: CacheKey = (
                 ip_to_string(&connection.saddr),
-                ip_to_string(&connection.saddr),
+                ip_to_string(&connection.daddr),
                 connection.sport,
                 connection.dport,
                 comm.to_string_lossy().into_owned(),
                 direction,
             );
-
+            let size32 = u32::from(size);
             let mut state = cache.lock().expect("Could not lock mutex");
-            *state.entry(key).or_insert(0) += size as u32;
+            let mut entry = *state.entry(key).or_insert(0);
+            entry += size32;
         }
     }
 
