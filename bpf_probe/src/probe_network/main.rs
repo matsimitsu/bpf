@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-use ingraind_probes::network::{Connection, Message};
+use bpf_probe::probe_network::{Connection, Message};
 use redbpf_probes::kprobe::prelude::*;
 
 program!(0xFFFFFFFE, "GPL");
