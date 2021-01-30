@@ -1,7 +1,6 @@
 #![no_std]
 #![no_main]
-use bpf_probe::probe_network::{Connection, Direction, Message};
-use cty::*;
+use ingraind_probes::network::{Connection, Message};
 use redbpf_probes::kprobe::prelude::*;
 
 program!(0xFFFFFFFE, "GPL");
@@ -24,7 +23,7 @@ pub fn send_enter(regs: Registers) {
 
 #[kretprobe("tcp_sendmsg")]
 pub fn send_exit(regs: Registers) {
-    trace_message(regs, Direction::Send)
+    trace_message(regs, Message::Send)
 }
 
 #[kprobe("tcp_recvmsg")]
@@ -34,17 +33,17 @@ pub fn recv_enter(regs: Registers) {
 
 #[kretprobe("tcp_recvmsg")]
 pub fn recv_exit(regs: Registers) {
-    trace_message(regs, Direction::Receive)
+    trace_message(regs, Message::Receive)
 }
 
 #[kprobe("udp_sendmsg")]
 pub fn udp_send_enter(regs: Registers) {
-    trace_message(regs, Direction::Send)
+    trace_message(regs, Message::Send)
 }
 
 #[kprobe("udp_rcv")]
 pub fn udp_rcv_enter(regs: Registers) {
-    trace_message(regs, Direction::Receive)
+    trace_message(regs, Message::Receive)
 }
 
 #[inline(always)]
@@ -53,18 +52,17 @@ fn store_socket(regs: Registers) {
 }
 
 #[inline(always)]
-fn trace_message(regs: Registers, direction: Direction) {
-    if let Some(c) = conn_details(regs, direction) {
-        let len = unsafe { (*regs.ctx).ax as u16 };
-        let message: Message = (c, len);
+fn trace_message(regs: Registers, direction: fn(Connection, u16) -> Message) {
+    if let Some(c) = conn_details(regs) {
+        let len = regs.parm3() as u16;
         unsafe {
-            ip_volumes.insert(regs.ctx, &message);
+            ip_volumes.insert(regs.ctx, &direction(c, len));
         }
     }
 }
 
 #[inline(always)]
-pub fn conn_details(_regs: Registers, direction: Direction) -> Option<Connection> {
+pub fn conn_details(_regs: Registers) -> Option<Connection> {
     let pid_tgid = bpf_get_current_pid_tgid();
     let socket = unsafe {
         match task_to_socket.get(&pid_tgid) {
@@ -132,6 +130,5 @@ pub fn conn_details(_regs: Registers, direction: Direction) -> Option<Connection
         sport,
         dport,
         typ,
-        direction,
     })
 }

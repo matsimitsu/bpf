@@ -31,6 +31,7 @@ impl Debug for Ipv6Addr {
     }
 }
 
+#[derive(Debug)]
 pub struct Connection {
     pub ts: u64,
     pub pid: u32,
@@ -40,13 +41,10 @@ pub struct Connection {
     pub comm: [c_char; 16],
     pub saddr: Ipv6Addr,
     pub daddr: Ipv6Addr,
-    pub direction: Direction,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
-pub enum Direction {
-    Send,
-    Receive,
+#[derive(Debug)]
+pub enum Message {
+    Send(Connection, u16),
+    Receive(Connection, u16),
 }
-
-pub type Message = (Connection, u16);

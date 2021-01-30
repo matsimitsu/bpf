@@ -1,21 +1,22 @@
-use bpf_probe::probe_network::{Message,Ipv6Addr,Direction};
+use bpf_probe::probe_network::{Ipv6Addr, Message};
 use redbpf::load::Loader;
 
-use std::os::raw::c_char;
-use std::ffi::CStr;
+use std::collections::HashMap;
 use std::env;
+use std::ffi::CStr;
 use std::io;
 use std::mem;
 use std::net::{IpAddr, Ipv4Addr};
+use std::os::raw::c_char;
 use std::ptr;
 use std::sync::mpsc::channel;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 
 use dns_lookup::lookup_addr;
+use futures::{future, stream::StreamExt};
 use lazy_static::lazy_static;
 use lru_cache::LruCache;
 use nix::unistd::gethostname;
@@ -24,7 +25,6 @@ use serde::Serialize;
 use serde_json::json;
 use time::OffsetDateTime;
 use ureq::Agent;
-use futures::{future, stream::StreamExt};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Link {
@@ -36,15 +36,28 @@ pub struct Link {
     dest_port: u32,
     command: String,
     timestamp: u64,
-    size: u64
+    size: u64,
 }
 
-pub type CacheKey = (std::string::String, std::string::String, u32, u32, std::string::String, Direction);
+pub type CacheKey = (
+    std::string::String,
+    std::string::String,
+    u32,
+    u32,
+    std::string::String,
+    Direction,
+);
 pub type Cache = Arc<Mutex<HashMap<CacheKey, u32>>>;
 
 lazy_static! {
     pub static ref HOSTNAME: String = hostname().expect("Could not get hostname");
     pub static ref IPS: Vec<String> = ips();
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum Direction {
+    Send,
+    Receive,
 }
 
 #[tokio::main]
@@ -73,7 +86,11 @@ async fn main() -> Result<(), io::Error> {
     tokio::spawn(async move {
         while let Some((name, events)) = loader.events.next().await {
             for event in events {
-                let (connection, size) = unsafe { ptr::read(event.as_ptr() as *const Message) };
+                let message = unsafe { ptr::read(event.as_ptr() as *const Message) };
+                let (connection, size, direction) = match message {
+                    Message::Send(c, s) => (c, s, Direction::Send),
+                    Message::Receive(c, s) => (c, s, Direction::Receive),
+                };
                 let comm = unsafe { CStr::from_ptr(connection.comm.as_ptr() as *const c_char) };
 
                 let key: CacheKey = (
@@ -82,13 +99,13 @@ async fn main() -> Result<(), io::Error> {
                     connection.sport,
                     connection.dport,
                     comm.to_string_lossy().into_owned(),
-                    connection.direction
+                    direction,
                 );
 
                 let mut state = cache_clone.lock().expect("Could not lock mutex");
                 *state.entry(key).or_insert(0) += size as u32;
-            };
-        };
+            }
+        }
         future::pending::<()>().await;
     });
 
@@ -100,7 +117,7 @@ async fn main() -> Result<(), io::Error> {
         // convert cache to link, enriching the data
 
         // transmit link
-    };
+    }
 
     Ok(())
 }
