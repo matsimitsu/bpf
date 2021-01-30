@@ -1,4 +1,4 @@
-use bpf_probe::probe_network::{Ipv6Addr, Message};
+use bpf_probe::probe_network::{Ipv6Addr, Message, Connection};
 use redbpf::load::Loader;
 
 use std::collections::HashMap;
