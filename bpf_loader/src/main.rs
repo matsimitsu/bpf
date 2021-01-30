@@ -101,6 +101,7 @@ async fn main() -> Result<(), io::Error> {
     while let Some((name, events)) = loader.events.next().await {
         for event in events {
             let message = unsafe { ptr::read(event.as_ptr() as *const Message) };
+            println!("MSG: {:?}", message);
             let (connection, size, direction) = match message {
                 Message::Send(c, s) => (c, s, Direction::Send),
                 Message::Receive(c, s) => (c, s, Direction::Receive),
