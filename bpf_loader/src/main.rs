@@ -81,7 +81,7 @@ async fn main() -> Result<(), io::Error> {
         program.attach_kprobe(&program.name(), 0).unwrap()
     }
     let mut cache: Cache = Arc::new(Mutex::new(HashMap::new()));
-    let cache_clone = cache.clone();
+    let cache_clone = Arc::clone(&cache);
 
     tokio::spawn(async move {
         while let Some((name, events)) = loader.events.next().await {
