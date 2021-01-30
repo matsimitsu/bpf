@@ -83,7 +83,7 @@ async fn main() -> Result<(), io::Error> {
     let mut cache: Cache = Arc::new(Mutex::new(HashMap::new()));
     let cache_clone = cache.clone();
 
-    tokio::spawn(async move {
+    //tokio::spawn(async move {
         while let Some((name, events)) = loader.events.next().await {
             for event in events {
                 let message = unsafe { ptr::read(event.as_ptr() as *const Message) };
@@ -107,17 +107,17 @@ async fn main() -> Result<(), io::Error> {
                 *state.entry(key).or_insert(0) += size as u32;
             }
         }
-    });
+    //});
 
-    loop {
-        sleep(Duration::from_millis(10000));
-        let mut state = cache.lock().expect("Could not lock mutex");
-        let transfer_cache = mem::replace(&mut *state, HashMap::new());
-        println!("{:?}", transfer_cache);
-        // convert cache to link, enriching the data
-
-        // transmit link
-    }
+    //loop {
+    //    sleep(Duration::from_millis(10000));
+    //    let mut state = cache.lock().expect("Could not lock mutex");
+    //    let transfer_cache = mem::replace(&mut *state, HashMap::new());
+    //    println!("{:?}", transfer_cache);
+    //    // convert cache to link, enriching the data
+//
+    //    // transmit link
+    //}
 
     Ok(())
 }
