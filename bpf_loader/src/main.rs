@@ -80,43 +80,49 @@ async fn main() -> Result<(), io::Error> {
         let name = program.name().to_string();
         program.attach_kprobe(&program.name(), 0).unwrap()
     }
-    let mut cache: Cache = Arc::new(Mutex::new(HashMap::new()));
-    let cache_clone = Arc::clone(&cache);
+    let cache: Cache = Arc::new(Mutex::new(HashMap::new()));
 
-    tokio::spawn(async move {
-        while let Some((name, events)) = loader.events.next().await {
-            for event in events {
-                let message = unsafe { ptr::read(event.as_ptr() as *const Message) };
-                let (connection, size, direction) = match message {
-                    Message::Send(c, s) => (c, s, Direction::Send),
-                    Message::Receive(c, s) => (c, s, Direction::Receive),
-                };
-                let comm = unsafe { CStr::from_ptr(connection.comm.as_ptr() as *const c_char) };
+    {
+        let cloned_cache = cache.clone();
+        tokio::spawn(async move {
+            println!("starting");
+            while let Some((name, events)) = loader.events.next().await {
+                println!("({},{})", name, events.len());
+                for event in events {
+                    println!("event");
+                    let message = unsafe { ptr::read(event.as_ptr() as *const Message) };
+                    let (connection, size, direction) = match message {
+                        Message::Send(c, s) => (c, s, Direction::Send),
+                        Message::Receive(c, s) => (c, s, Direction::Receive),
+                    };
+                    let comm = unsafe { CStr::from_ptr(connection.comm.as_ptr() as *const c_char) };
+                    println!("comm");
 
-                let key: CacheKey = (
-                    ip_to_string(&connection.saddr),
-                    ip_to_string(&connection.saddr),
-                    connection.sport,
-                    connection.dport,
-                    comm.to_string_lossy().into_owned(),
-                    direction,
-                );
+                    let key: CacheKey = (
+                        ip_to_string(&connection.saddr),
+                        ip_to_string(&connection.saddr),
+                        connection.sport,
+                        connection.dport,
+                        comm.to_string_lossy().into_owned(),
+                        direction,
+                    );
 
-                println!("{:?}", &key);
-                let mut state = cache_clone.lock().expect("Could not lock mutex");
-                *state.entry(key).or_insert(0) += size as u32;
+                    println!("{:?}", &key);
+                    let mut state = cloned_cache.lock().expect("Could not lock mutex");
+                    *state.entry(key).or_insert(0) += size as u32;
+                }
             }
-        }
-    });
-
+        });
+    }
     loop {
         sleep(Duration::from_millis(10000));
-        let mut state = cache.lock().expect("Could not lock mutex");
-        println!("{:?}", state);
-        let transfer_cache = mem::replace(&mut *state, HashMap::new());
-        println!("{:?}", transfer_cache);
+        {
+            let mut state = cache.lock().expect("Could not lock mutex");
+            println!("{:?}", state);
+            let transfer_cache = mem::replace(&mut *state, HashMap::new());
+            println!("{:?}", transfer_cache);
+        }
         // convert cache to link, enriching the data
-
         // transmit link
     }
 
