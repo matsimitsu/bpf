@@ -122,7 +122,7 @@ async fn main() -> Result<(), io::Error> {
 
     thread::spawn( move || {
         loop {
-            sleep(Duration::from_millis(1000));
+            sleep(Duration::from_millis(10000));
             let mut state = clone.lock().expect("Could not lock mutex");
             let transfer_cache = mem::replace(&mut *state, HashMap::new());
             let links: Vec<Link> = transfer_cache.iter().map(|c| {
