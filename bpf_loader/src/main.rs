@@ -116,10 +116,8 @@ async fn main() -> Result<(), io::Error> {
                 comm.to_string_lossy().into_owned(),
                 direction,
             );
-            let size32 = u32::from(size);
             let mut state = cache.lock().expect("Could not lock mutex");
-            let mut entry = *state.entry(key).or_insert(0);
-            entry += size32;
+            let mut entry = *state.entry(key).or_insert(0) += size32 as u32;
         }
     }
 
