@@ -117,7 +117,7 @@ async fn main() -> Result<(), io::Error> {
                 direction,
             );
             let mut state = cache.lock().expect("Could not lock mutex");
-            let mut entry = *state.entry(key).or_insert(0) += size32 as u32;
+            let mut entry = *state.entry(key).or_insert(0) += size as u32;
         }
     }
 
