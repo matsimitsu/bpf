@@ -102,7 +102,6 @@ async fn main() -> Result<(), io::Error> {
         for event in events {
             let message = unsafe { ptr::read(event.as_ptr() as *const Message) };
 
-            println!("MSG: {:?}", message);
             let (connection, size, direction) = match message {
                 Message::Send(conn, size) => (conn, size, Direction::Send),
                 Message::Receive(conn, size) => (conn, size, Direction::Receive),
