@@ -1,26 +1,25 @@
-use bpf_probe::probe_network::{Connection, Ipv6Addr, Message};
-use redbpf::load::{Loader,Loaded};
+use bpf_probe::probe_network::{Ipv6Addr as BpfIpv6Addr, Message};
+use redbpf::load::Loader;
 
 use std::collections::HashMap;
 use std::env;
 use std::ffi::CStr;
 use std::io;
 use std::mem;
-use std::net::{IpAddr, Ipv4Addr};
 use std::os::raw::c_char;
 use std::ptr;
-use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::sleep;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::net::{IpAddr, Ipv6Addr};
 
 use dns_lookup::lookup_addr;
-use futures::{future, stream::StreamExt};
+use futures::stream::StreamExt;
 use lazy_static::lazy_static;
 use lru_cache::LruCache;
 use nix::unistd::gethostname;
-use pnet::datalink::{self, NetworkInterface};
+use pnet::datalink;
 use serde::Serialize;
 use serde_json::json;
 use time::OffsetDateTime;
@@ -32,22 +31,61 @@ pub struct Link {
     dest_ip: String,
     source_hostname: String,
     dest_hostname: String,
-    source_port: u32,
-    dest_port: u32,
+    port: u32,
     command: String,
-    timestamp: u64,
     size: u64,
+    direction: String
+}
+
+impl Link {
+    pub fn from_cache(cache: (&CacheKey, &u32), hostname_cache: &mut HostnameCache) -> Link {
+        let (key, size) = cache;
+        let (source_ip, dest_ip, port, command, direction) = key;
+
+        let source_hostname = match hostname_cache.get_mut(&source_ip) {
+            Some(hostname) => hostname.to_string(),
+            None => {
+                let hostname = lookup_addr(&source_ip).unwrap_or(source_ip.to_string());
+                hostname_cache.insert(*source_ip, hostname.to_string());
+              hostname
+            }
+        };
+
+        let dest_hostname = match hostname_cache.get_mut(&dest_ip) {
+            Some(hostname) => hostname.to_string(),
+            None => {
+                let hostname = lookup_addr(&dest_ip).unwrap_or(dest_ip.to_string());
+                hostname_cache.insert(*dest_ip, hostname.to_string());
+                hostname
+            }
+        };
+
+        let direction = match direction {
+            Direction::Send => "Send".to_string(),
+            Direction::Receive => "Receive".to_string()
+        };
+        Self {
+            source_ip: source_ip.to_string(),
+            dest_ip: dest_ip.to_string(),
+            source_hostname,
+            dest_hostname,
+            port: *port,
+            command: command.to_string(),
+            size: *size as u64,
+            direction
+        }
+    }
 }
 
 pub type CacheKey = (
-    std::string::String,
-    std::string::String,
-    u32,
+    IpAddr,
+    IpAddr,
     u32,
     std::string::String,
     Direction,
 );
 pub type Cache = Arc<Mutex<HashMap<CacheKey, u32>>>;
+pub type HostnameCache = LruCache<IpAddr, String>;
 
 lazy_static! {
     pub static ref HOSTNAME: String = hostname().expect("Could not get hostname");
@@ -72,33 +110,29 @@ async fn main() -> Result<(), io::Error> {
     }
     let endpoint = args[1].clone();
     let mut loader = Loader::load(elf_bytes).expect("error loading file");
-    let mut hostname_cache: LruCache<IpAddr, String> = LruCache::new(1000);
+    let mut hostname_cache: HostnameCache = LruCache::new(1000);
     let agent = Agent::new().set("Content-type", "application/json").build();
 
     // Load all of the kprobes programs from the binary
     for program in loader.module.kprobes_mut() {
-        let name = program.name().to_string();
         program.attach_kprobe(&program.name(), 0).unwrap()
     }
     let cache: Cache = Arc::new(Mutex::new(HashMap::new()));
-
     let clone = cache.clone();
 
     thread::spawn( move || {
-        println!("Spawned");
         loop {
             sleep(Duration::from_millis(1000));
-            {
-                let mut state = clone.lock().expect("Could not lock mutex");
-                let transfer_cache = mem::replace(&mut *state, HashMap::new());
-                println!("{:?}", transfer_cache);
-            }
-            // convert cache to link, enriching the data
-            // transmit link
+            let mut state = clone.lock().expect("Could not lock mutex");
+            let transfer_cache = mem::replace(&mut *state, HashMap::new());
+            let links: Vec<Link> = transfer_cache.iter().map(|c| {
+                Link::from_cache(c, &mut hostname_cache)
+            }).collect();
+            transmit(&agent, &endpoint, &links);
         }
     });
 
-    while let Some((name, events)) = loader.events.next().await {
+    while let Some((_name, events)) = loader.events.next().await {
         for event in events {
             let message = unsafe { ptr::read(event.as_ptr() as *const Message) };
 
@@ -109,27 +143,25 @@ async fn main() -> Result<(), io::Error> {
             let comm = unsafe { CStr::from_ptr(connection.comm.as_ptr() as *const c_char) };
 
             let key: CacheKey = (
-                ip_to_string(&connection.saddr),
-                ip_to_string(&connection.daddr),
+                ip_to_addr(&connection.saddr),
+                ip_to_addr(&connection.daddr),
                 connection.sport,
-                connection.dport,
                 comm.to_string_lossy().into_owned(),
                 direction,
             );
             let mut state = cache.lock().expect("Could not lock mutex");
-            let mut entry = *state.entry(key).or_insert(0) += size as u32;
+            *state.entry(key).or_insert(0) += size as u32;
         }
     }
 
     Ok(())
 }
 
-pub fn transmit(agent: &Agent, endpoint: &str, links: &Vec<Link>, duration: &u64) -> bool {
+pub fn transmit(agent: &Agent, endpoint: &str, links: &Vec<Link>) -> bool {
     let json = json!({
       "hostname": HOSTNAME.to_string(),
       "ips": IPS.to_vec(),
       "timestamp": OffsetDateTime::now_utc().unix_timestamp(),
-      "duration": duration,
       "links": links,
     });
     let resp = agent.post(endpoint).send_json(json.to_owned());
@@ -165,11 +197,11 @@ fn ips() -> Vec<String> {
     ips
 }
 
-fn ip_to_string(addr: &Ipv6Addr) -> String {
-    let v6: &std::net::Ipv6Addr = unsafe { std::mem::transmute(addr) };
+fn ip_to_addr(addr: &BpfIpv6Addr) -> IpAddr {
+    let v6: &Ipv6Addr = unsafe { std::mem::transmute(addr) };
 
     match v6.to_ipv4() {
-        Some(v4) => v4.to_string(),
-        None => v6.to_string(),
+        Some(v4) => IpAddr::V4(v4),
+        None => IpAddr::V6(*v6),
     }
 }
